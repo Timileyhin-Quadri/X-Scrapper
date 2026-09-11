@@ -25,11 +25,13 @@ A complete, beginner-friendly data collection and persistence pipeline designed 
   - [Phase 1: Log in Once & Save Session Cookies](#phase-1-log-in-once--save-session-cookies)
   - [Phase 2: Scrape Tweets Automatically](#phase-2-scrape-tweets-automatically)
   - [Phase 3: Export Data to Excel / CSV](#phase-3-export-data-to-excel--csv)
-- [Systematic Historical Scraping Campaigns (2024 – 2026)](#-systematic-historical-scraping-campaigns-2024--2026)
+- [Systematic Historical Scraping Campaigns (2020 – 2026)](#-systematic-historical-scraping-campaigns-2020--2026)
   - [Search Operator Essentials (-is:retweet, Quotes, Visibility)](#-search-operator-essentials)
-  - [2026 Scraping Campaign (Recent & Sliced)](#1-2026-scraping-campaign)
-  - [2025 Scraping Campaign (Month-by-Month)](#2-2025-scraping-campaign-full-year)
-  - [2024 Scraping Campaign (Month-by-Month)](#3-2024-scraping-campaign-full-year)
+  - [Maximum Volume Extraction Strategy (--scroll-pause & Target)](#-maximum-volume-extraction-strategy)
+  - [1. 2026 Scraping Campaign (Recent & Sliced)](#1-2026-scraping-campaign)
+  - [2. 2025 Scraping Campaign (Month-by-Month)](#2-2025-scraping-campaign-full-year)
+  - [3. 2024 Scraping Campaign (Month-by-Month)](#3-2024-scraping-campaign-full-year)
+  - [4. High-Volume Campaigns & Movement Origin (April & May 2020)](#4-high-volume-campaigns--movement-origin-april--may-2020)
 - [Search Query Guide (Finding What You Want)](#-search-query-guide-finding-what-you-want)
 - [Exploring Your Data with SQL](#-exploring-your-data-with-sql)
   - [PostgreSQL Queries](#postgresql-queries)
@@ -430,7 +432,7 @@ python scripts/export_csv.py --output data/south_africa.csv --query "#PutSouthAf
 
 ---
 
-## 📅 Systematic Historical Scraping Campaigns (2024 – 2026)
+## 📅 Systematic Historical Scraping Campaigns (2020 – 2026)
 
 When aiming to collect a massive research dataset (thousands of posts), **do not try to scrape 10,000 tweets in a single command**. Twitter's search interface terminates infinite scrolling after roughly 500–800 tweets on any single search URL, and continuous multi-hour scrolling risks browser memory bloat and account rate limits.
 
@@ -445,6 +447,18 @@ Instead, the proven approach is **date slicing**: breaking your collection into 
   * To open the Google Chrome window and watch tweets being scraped live, simply append `--visible` to any command.
 * **🛡️ Zero Duplicate Guarantee:** The database automatically discards duplicate `tweet_id` records (`ON CONFLICT DO NOTHING`). You can re-run overlapping queries anytime without dirtying your dataset.
 * **Pacing:** Wait **3 to 5 minutes** between batch runs to allow X's rate-limiting counters to cool down.
+
+### 🚀 Maximum Volume Extraction Strategy
+
+When scraping high-density historical periods where you want to collect **every single available tweet** without missing any:
+1. **Set a High Target Ceiling (`--target 5000`):** Because the scraper automatically stops after 12 consecutive empty scrolls when the timeline reaches its natural end, a target of 5000 guarantees the script won't exit prematurely.
+2. **Increase Scroll Pause (`--scroll-pause 3.0`):** Gives Twitter's background GraphQL requests ample time to render incoming posts on heavy pages.
+3. **Overlap Boundaries by 1 Day:** Prevents midnight UTC timezone edge cases from omitting tweets (e.g. `May 1 to May 16`, then `May 15 to June 1`). Duplicates are automatically discarded by PostgreSQL.
+
+```bash
+# Maximum extraction template:
+python scripts/scrape_tweets.py --query "YOUR_QUERY" --target 5000 --scroll-pause 3.0
+```
 
 ---
 
@@ -585,6 +599,39 @@ python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-02-01 u
 
 # January 2024
 python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-01-01 until:2024-02-01 -is:retweet" --target 500
+```
+
+---
+
+### 4. High-Volume Campaigns & Movement Origin (April & May 2020)
+
+> 💡 **Historical & Research Significance:** **April and May 2020** marks the initial birth and viral explosion of the `#PutSouthAfricaFirst` movement on X during South Africa's early COVID-19 national lockdowns. Because discussion density was exceptionally high during these two months, split chunks and maximum extraction parameters (`--scroll-pause 3.0`) are recommended to avoid Twitter's ~800 scroll limit.
+
+#### A. May 2020 (Peak Viral Month - Split 2-Week Chunks)
+```bash
+# May 2020 - Part 1 (May 1 to May 16):
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2020-05-01 until:2020-05-16 -is:retweet" --target 5000 --scroll-pause 3.0
+
+# May 2020 - Part 2 (May 16 to June 1):
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2020-05-16 until:2020-06-01 -is:retweet" --target 5000 --scroll-pause 3.0
+```
+
+#### B. April 2020 (Movement Emergence - Split 2-Week Chunks)
+```bash
+# April 2020 - Part 1 (April 1 to April 16):
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2020-04-01 until:2020-04-16 -is:retweet" --target 5000 --scroll-pause 3.0
+
+# April 2020 - Part 2 (April 16 to May 1):
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2020-04-16 until:2020-05-01 -is:retweet" --target 5000 --scroll-pause 3.0
+```
+
+#### C. Standard Single-Month Runs (For Quick Sampling)
+```bash
+# May 2020 (Full Month Sample):
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2020-05-01 until:2020-06-01 -is:retweet" --target 500
+
+# April 2020 (Full Month Sample):
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2020-04-01 until:2020-05-01 -is:retweet" --target 500
 ```
 
 ---
