@@ -159,12 +159,16 @@ class TestPlaywrightScraperConfig:
     def test_find_chrome_executable(self):
         from app.playwright_scraper import PlaywrightScraper
         import os
+        import sys
 
         # Verify it finds the existing system Chrome or Playwright Chromium
         path = PlaywrightScraper.find_chrome_executable()
         assert path is not None
         assert os.path.isfile(path)
-        assert path.lower().endswith(".exe")
+        if sys.platform == "win32":
+            assert path.lower().endswith(".exe")
+        else:
+            assert os.access(path, os.X_OK)
 
     def test_session_path_default(self):
         from app.playwright_scraper import PlaywrightScraper

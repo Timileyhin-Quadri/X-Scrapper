@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -64,7 +65,7 @@ class PlaywrightScraper:
 
     @staticmethod
     def find_chrome_executable(custom_path: Optional[str] = None) -> str:
-        """Find Google Chrome or Chromium executable on the system."""
+        """Find Google Chrome or Chromium executable on the system (Windows, macOS, Linux)."""
         if custom_path and os.path.isfile(custom_path):
             return custom_path
 
@@ -72,23 +73,54 @@ class PlaywrightScraper:
         if env_path and os.path.isfile(env_path):
             return env_path
 
-        # Standard Windows install paths for Google Chrome / Chromium
-        candidates = [
-            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-            os.path.expanduser(r"~\AppData\Local\Google\Chrome\Application\chrome.exe"),
-            r"C:\Program Files\Chromium\Application\chrome.exe",
-            os.path.expanduser(r"~\AppData\Local\Chromium\Application\chrome.exe"),
-        ]
+        candidates = []
 
-        # Check Playwright-installed chromium
-        playwright_dir = os.path.expanduser(r"~\AppData\Local\ms-playwright")
-        if os.path.isdir(playwright_dir):
-            for pattern in ["chromium-*/chrome-win64/chrome.exe", "chromium-*/chrome-win/chrome.exe"]:
-                candidates.extend(glob.glob(os.path.join(playwright_dir, pattern)))
+        if sys.platform == "darwin":  # macOS
+            candidates.extend([
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                os.path.expanduser("~/Applications/Chromium.app/Contents/MacOS/Chromium"),
+                "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            ])
+            # Check Playwright-installed chromium on macOS
+            pw_macos_dir = os.path.expanduser("~/Library/Caches/ms-playwright")
+            if os.path.isdir(pw_macos_dir):
+                for pattern in [
+                    "chromium-*/chrome-mac/Chromium.app/Contents/MacOS/Chromium",
+                    "chromium-*/chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium",
+                ]:
+                    candidates.extend(glob.glob(os.path.join(pw_macos_dir, pattern)))
 
-        # Check system PATH
-        for name in ["chrome", "google-chrome", "chromium", "chromium-browser"]:
+        elif sys.platform == "win32":  # Windows
+            candidates.extend([
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                os.path.expanduser(r"~\AppData\Local\Google\Chrome\Application\chrome.exe"),
+                r"C:\Program Files\Chromium\Application\chrome.exe",
+                os.path.expanduser(r"~\AppData\Local\Chromium\Application\chrome.exe"),
+            ])
+            # Check Playwright-installed chromium on Windows
+            playwright_dir = os.path.expanduser(r"~\AppData\Local\ms-playwright")
+            if os.path.isdir(playwright_dir):
+                for pattern in ["chromium-*/chrome-win64/chrome.exe", "chromium-*/chrome-win/chrome.exe"]:
+                    candidates.extend(glob.glob(os.path.join(playwright_dir, pattern)))
+
+        else:  # Linux / Unix
+            candidates.extend([
+                "/usr/bin/google-chrome",
+                "/usr/bin/google-chrome-stable",
+                "/usr/bin/chromium",
+                "/usr/bin/chromium-browser",
+                "/snap/bin/chromium",
+            ])
+            pw_linux_dir = os.path.expanduser("~/.cache/ms-playwright")
+            if os.path.isdir(pw_linux_dir):
+                candidates.extend(glob.glob(os.path.join(pw_linux_dir, "chromium-*/chrome-linux/chrome")))
+
+        # Check system PATH as fallback across all platforms
+        for name in ["chrome", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]:
             which_path = shutil.which(name)
             if which_path:
                 candidates.append(which_path)
