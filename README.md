@@ -25,6 +25,11 @@ A complete, beginner-friendly data collection and persistence pipeline designed 
   - [Phase 1: Log in Once & Save Session Cookies](#phase-1-log-in-once--save-session-cookies)
   - [Phase 2: Scrape Tweets Automatically](#phase-2-scrape-tweets-automatically)
   - [Phase 3: Export Data to Excel / CSV](#phase-3-export-data-to-excel--csv)
+- [Systematic Historical Scraping Campaigns (2024 – 2026)](#-systematic-historical-scraping-campaigns-2024--2026)
+  - [Search Operator Essentials (-is:retweet, Quotes, Visibility)](#-search-operator-essentials)
+  - [2026 Scraping Campaign (Recent & Sliced)](#1-2026-scraping-campaign)
+  - [2025 Scraping Campaign (Month-by-Month)](#2-2025-scraping-campaign-full-year)
+  - [2024 Scraping Campaign (Month-by-Month)](#3-2024-scraping-campaign-full-year)
 - [Search Query Guide (Finding What You Want)](#-search-query-guide-finding-what-you-want)
 - [Exploring Your Data with SQL](#-exploring-your-data-with-sql)
   - [PostgreSQL Queries](#postgresql-queries)
@@ -87,18 +92,21 @@ Open your computer's terminal and navigate into the project folder:
 
 ---
 
-### Step 2: Create a Virtual Environment
+### Step 2: Create and Activate a Virtual Environment
 
-A virtual environment is a private sandbox for Python so the project's packages do not interfere with the rest of your computer.
+A virtual environment is a private sandbox for Python that ensures the project's dependencies and libraries do not conflict with other Python programs on your computer.
 
-Run the following command:
+#### 1. Create the Virtual Environment:
+Run the following command in your terminal from the project folder:
 
 ```bash
-# Create the virtual environment folder named .venv
+# Create a virtual environment folder named .venv
 python -m venv .venv
 ```
+*(On Windows, if `python` is not recognized, you can also try: `py -m venv .venv`)*
 
-Now, **activate** it:
+#### 2. Activate the Virtual Environment:
+Before installing packages or running scripts, you **must activate** the environment:
 
 - **Windows (Command Prompt `cmd`)**:
   ```cmd
@@ -108,28 +116,58 @@ Now, **activate** it:
   ```powershell
   .venv\Scripts\Activate.ps1
   ```
-  *(If PowerShell shows a script execution error, run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` and try again).*
+  *(If PowerShell displays an execution policy error, run this once: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`, then run the activate command again).*
+- **Windows (Git Bash)**:
+  ```bash
+  source .venv/Scripts/activate
+  ```
 - **macOS / Linux**:
   ```bash
   source .venv/bin/activate
   ```
 
-> 💡 **Tip:** When activated, you will see `(.venv)` appear at the very beginning of your terminal prompt line!
+> 💡 **Visual Confirmation:** Once activated, your terminal prompt will show `(.venv)` at the beginning of the line:
+> ```text
+> (.venv) C:\Users\YourName\Desktop\ScrapperTweets>
+> ```
+
+#### 3. How to Deactivate (When Finished Working):
+When you are completely done working on the project, you can exit the virtual environment at any time by simply typing:
+```bash
+deactivate
+```
 
 ---
 
 ### Step 3: Install Required Dependencies
 
-Run this command to install the required Python libraries:
+With your virtual environment activated `(.venv)`, install the project dependencies:
 
+#### 1. Upgrade `pip` (Recommended):
+```bash
+python -m pip install --upgrade pip
+```
+
+#### 2. Install Project Libraries:
 ```bash
 pip install -r requirements.txt
 ```
+This installs all required packages:
+* `playwright`: Headless and headed browser automation engine.
+* `psycopg2-binary`: PostgreSQL driver.
+* `mysql-connector-python`: MySQL driver (if using MySQL).
+* `python-dotenv`: Environment variable loader.
 
-Next, install the Playwright browser binaries:
-
+#### 3. Install Playwright Chromium Browser:
+Download the dedicated Chromium automation browser:
 ```bash
 python -m playwright install chromium
+```
+
+#### 4. Verify Installation:
+Run this quick one-line check to verify that all dependencies are installed and working:
+```bash
+python -c "import playwright, psycopg2, dotenv; print('✅ All dependencies successfully installed and ready!')"
 ```
 
 ---
@@ -389,6 +427,165 @@ python scripts/export_csv.py --output data/south_africa.csv --query "#PutSouthAf
 | `conversation_id` | Thread or conversation ID |
 | `query` | The search term used to find this post |
 | `collected_at` | Timestamp when the scraper saved the record |
+
+---
+
+## 📅 Systematic Historical Scraping Campaigns (2024 – 2026)
+
+When aiming to collect a massive research dataset (thousands of posts), **do not try to scrape 10,000 tweets in a single command**. Twitter's search interface terminates infinite scrolling after roughly 500–800 tweets on any single search URL, and continuous multi-hour scrolling risks browser memory bloat and account rate limits.
+
+Instead, the proven approach is **date slicing**: breaking your collection into discrete monthly or weekly windows with targets of **300 to 500 tweets per batch**.
+
+### 💡 Search Operator Essentials
+
+* **`-is:retweet` (Exclude Retweets):** Filters out pure retweets (reposts where users didn't write anything). Keeps only original posts, direct replies, and **quote tweets**.
+* **Behavior with Quote Tweets:** Quote tweets **ARE INCLUDED** when you use `-is:retweet`. Because a quote tweet contains original commentary written by the author, X classifies it as an original post.
+* **Headless vs. Visible (`--visible`):** 
+  * All commands below run in the background (**headless**) by default.
+  * To open the Google Chrome window and watch tweets being scraped live, simply append `--visible` to any command.
+* **🛡️ Zero Duplicate Guarantee:** The database automatically discards duplicate `tweet_id` records (`ON CONFLICT DO NOTHING`). You can re-run overlapping queries anytime without dirtying your dataset.
+* **Pacing:** Wait **3 to 5 minutes** between batch runs to allow X's rate-limiting counters to cool down.
+
+---
+
+### 1. 2026 Scraping Campaign
+
+#### A. September 2026 (Live & Recent Tweets)
+```bash
+# Recent live tweets (from Sept 6 to the current moment) - Headless:
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-09-06 -is:retweet" --target 400
+
+# Recent live tweets - Visible Mode (watch the browser scroll live):
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-09-06 -is:retweet" --target 100 --visible
+
+# Early September (Sept 1 to Sept 6):
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-09-01 until:2026-09-06 -is:retweet" --target 400
+```
+
+#### B. August 2026 (Weekly Slices)
+```bash
+# August Week 1 (Aug 1 - Aug 8)
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-08-01 until:2026-08-08 -is:retweet" --target 400
+
+# August Week 2 (Aug 8 - Aug 16)
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-08-08 until:2026-08-16 -is:retweet" --target 400
+
+# August Week 3 (Aug 16 - Aug 24)
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-08-16 until:2026-08-24 -is:retweet" --target 400
+
+# August Week 4 (Aug 24 - Sept 1)
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-08-24 until:2026-09-01 -is:retweet" --target 400
+```
+
+#### C. Rest of 2026 (July down to January)
+```bash
+# July 2026
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-07-01 until:2026-08-01 -is:retweet" --target 500
+
+# June 2026
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-06-01 until:2026-07-01 -is:retweet" --target 500
+
+# May 2026
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-05-01 until:2026-06-01 -is:retweet" --target 500
+
+# April 2026
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-04-01 until:2026-05-01 -is:retweet" --target 500
+
+# March 2026
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-03-01 until:2026-04-01 -is:retweet" --target 500
+
+# February 2026
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-02-01 until:2026-03-01 -is:retweet" --target 500
+
+# January 2026
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2026-01-01 until:2026-02-01 -is:retweet" --target 500
+```
+
+---
+
+### 2. 2025 Scraping Campaign (Full Year)
+
+```bash
+# December 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-12-01 until:2026-01-01 -is:retweet" --target 500
+
+# November 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-11-01 until:2025-12-01 -is:retweet" --target 500
+
+# October 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-10-01 until:2025-11-01 -is:retweet" --target 500
+
+# September 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-09-01 until:2025-10-01 -is:retweet" --target 500
+
+# August 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-08-01 until:2025-09-01 -is:retweet" --target 500
+
+# July 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-07-01 until:2025-08-01 -is:retweet" --target 500
+
+# June 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-06-01 until:2025-07-01 -is:retweet" --target 500
+
+# May 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-05-01 until:2025-06-01 -is:retweet" --target 500
+
+# April 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-04-01 until:2025-05-01 -is:retweet" --target 500
+
+# March 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-03-01 until:2025-04-01 -is:retweet" --target 500
+
+# February 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-02-01 until:2025-03-01 -is:retweet" --target 500
+
+# January 2025
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2025-01-01 until:2025-02-01 -is:retweet" --target 500
+```
+
+---
+
+### 3. 2024 Scraping Campaign (Full Year)
+
+> 💡 **Election Year Note:** In 2024, the South African general election took place (May 2024). You will observe significantly higher tweet volumes during April, May, and June 2024. If any month hits the 500-tweet target early, you can split that month into two 15-day chunks (`01 to 15` and `15 to 30/31`) for deeper sampling.
+
+```bash
+# December 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-12-01 until:2025-01-01 -is:retweet" --target 500
+
+# November 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-11-01 until:2024-12-01 -is:retweet" --target 500
+
+# October 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-10-01 until:2024-11-01 -is:retweet" --target 500
+
+# September 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-09-01 until:2024-10-01 -is:retweet" --target 500
+
+# August 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-08-01 until:2024-09-01 -is:retweet" --target 500
+
+# July 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-07-01 until:2024-08-01 -is:retweet" --target 500
+
+# June 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-06-01 until:2024-07-01 -is:retweet" --target 500
+
+# May 2024 (Election Month - High Volume)
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-05-01 until:2024-06-01 -is:retweet" --target 500
+
+# April 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-04-01 until:2024-05-01 -is:retweet" --target 500
+
+# March 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-03-01 until:2024-04-01 -is:retweet" --target 500
+
+# February 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-02-01 until:2024-03-01 -is:retweet" --target 500
+
+# January 2024
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst since:2024-01-01 until:2024-02-01 -is:retweet" --target 500
+```
 
 ---
 
