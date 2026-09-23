@@ -15,7 +15,7 @@ import sys
 import time
 import urllib.request
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Callable, Optional
 from app.models import Tweet
 from app.logging_config import setup_logging
 
@@ -659,6 +659,7 @@ class PlaywrightScraper:
         query: str,
         target: int = 10000,
         scroll_pause: float = 2.5,
+        on_tweet: Optional[Callable[[Tweet], Any]] = None,
     ) -> list[Tweet]:
         """Search X and collect tweets by scrolling.
 
@@ -666,6 +667,7 @@ class PlaywrightScraper:
             query: Search query (e.g., "#PutSouthAfricaFirst").
             target: Target number of tweets.
             scroll_pause: Seconds to wait between scrolls.
+            on_tweet: Optional callback invoked immediately with each newly collected Tweet.
 
         Returns:
             List of collected Tweet objects.
@@ -736,6 +738,11 @@ class PlaywrightScraper:
                 if tweet.tweet_id not in tweets:
                     tweets[tweet.tweet_id] = tweet
                     new_count += 1
+                    if on_tweet:
+                        try:
+                            on_tweet(tweet)
+                        except Exception as cb_err:
+                            logger.error(f"Error executing on_tweet callback: {cb_err}")
 
             if new_count > 0:
                 no_new_tweets_count = 0

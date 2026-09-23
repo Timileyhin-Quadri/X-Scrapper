@@ -27,6 +27,7 @@ load_dotenv()
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config import get_config
+from app.csv_writer import CsvTweetWriter
 from app.database import Database
 from app.models import CollectionRun
 from app.repository import TweetRepository, CollectionRunRepository
@@ -52,10 +53,10 @@ signal.signal(signal.SIGTERM, handle_signal)
 
 async def main():
     parser = argparse.ArgumentParser(
-        description="Scrape X/Twitter posts using Playwright browser automation.",
+        description="Scrape X/Twitter posts using Playwright browser automation with real-time CSV streaming.",
         epilog=(
-            "This is a fallback when the X API is unavailable. "
-            "You must have an X account to log in."
+            "By default, scraped tweets are saved directly to a CSV file in real-time. "
+            "Use --use-db if you also want to persist tweets to a PostgreSQL database."
         ),
     )
     parser.add_argument(
@@ -69,6 +70,19 @@ async def main():
         type=int,
         default=10000,
         help="Target number of tweets to collect (default: 10000)",
+    )
+    parser.add_argument(
+        "--output",
+        "--csv-file",
+        dest="output",
+        type=str,
+        default=None,
+        help="Path to output CSV file (default: data/tweets.csv or from CSV_OUTPUT_PATH env)",
+    )
+    parser.add_argument(
+        "--use-db",
+        action="store_true",
+        help="Also persist collected tweets to PostgreSQL database (requires PostgreSQL running)",
     )
     parser.add_argument(
         "--username",
@@ -127,29 +141,47 @@ async def main():
 
     config = get_config()
     query = args.query or config.default_query
+    csv_path = args.output or config.csv_output_path
 
     logger.info("=" * 60)
     logger.info("X Research Collector - Playwright Scraper")
     logger.info("=" * 60)
     logger.info(f"Query: {query}")
     logger.info(f"Target: {args.target:,} tweets")
+    logger.info(f"Storage Mode: Real-Time CSV -> {csv_path}")
+    if args.use_db:
+        logger.info("Database Mode: PostgreSQL enabled (--use-db)")
+    else:
+        logger.info("Database Mode: Disabled (default; pass --use-db to enable)")
     logger.info(f"Mode: {'Visible' if args.visible or args.manual_login else 'Headless'}")
     logger.info(f"CDP Port: {args.cdp_port}")
     logger.info(f"Session File: {args.session_file}")
     if args.chrome_path:
         logger.info(f"Chrome Path: {args.chrome_path}")
 
-    # Initialize database
-    db = Database(config)
-    db.connect()
-    db.initialize_schema()
+    # Initialize CSV Writer (streams tweets in real-time and deduplicates across restarts)
+    csv_writer = CsvTweetWriter(filepath=csv_path)
 
-    tweet_repo = TweetRepository(db)
-    run_repo = CollectionRunRepository(db)
+    # Optionally initialize PostgreSQL database if requested
+    db = None
+    tweet_repo = None
+    run_repo = None
+    run = None
 
-    # Start collection run
-    run = CollectionRun(query=query, run_type="scraper")
-    run.run_id = run_repo.start_run(query, "scraper")
+    if args.use_db:
+        db_errors = config.validate(require_db=True)
+        if db_errors:
+            for err in db_errors:
+                logger.error(f"Configuration error: {err}")
+            sys.exit(1)
+
+        db = Database(config)
+        db.connect()
+        db.initialize_schema()
+        tweet_repo = TweetRepository(db)
+        run_repo = CollectionRunRepository(db)
+        run = CollectionRun(query=query, run_type="scraper")
+        run.run_id = run_repo.start_run(query, "scraper")
 
     # If manual login requested, browser must be visible
     is_headless = not (args.visible or args.manual_login)
@@ -183,31 +215,42 @@ async def main():
                     "Run 'python scripts/login.py' to log in manually and save session cookies."
                 )
 
-        # Collect tweets
+        # Collect tweets with real-time CSV streaming
         tweets = await scraper.search_and_collect(
             query=query,
             target=args.target,
             scroll_pause=args.scroll_pause,
+            on_tweet=csv_writer.write_tweet,
         )
 
-        # Persist to database
-        if tweets:
-            inserted, dupes = tweet_repo.insert_tweets(tweets)
-            run.posts_fetched = len(tweets)
-            run.posts_inserted = inserted
-            run.duplicates = dupes
-        else:
-            run.posts_fetched = 0
-            run.posts_inserted = 0
-            run.duplicates = 0
+        db_inserted = 0
+        db_dupes = 0
 
-        run.completed_at = datetime.now(timezone.utc)
-        run.status = "success"
-        run_repo.update_run(run)
+        # Persist to database if enabled
+        if args.use_db and run and tweet_repo and run_repo:
+            if tweets:
+                db_inserted, db_dupes = tweet_repo.insert_tweets(tweets)
+                run.posts_fetched = len(tweets)
+                run.posts_inserted = db_inserted
+                run.duplicates = db_dupes
+            else:
+                run.posts_fetched = 0
+                run.posts_inserted = 0
+                run.duplicates = 0
+
+            run.completed_at = datetime.now(timezone.utc)
+            run.status = "success"
+            run_repo.update_run(run)
 
         duration = time.time() - start_time
         hours, remainder = divmod(int(duration), 3600)
         minutes, seconds = divmod(remainder, 60)
+
+        db_summary_line = (
+            f"  Database Saved:     {db_inserted:,} (Duplicates: {db_dupes:,})"
+            if args.use_db
+            else "  Database:           Disabled (saved to CSV only)"
+        )
 
         summary_box = f"""
 ====================================================
@@ -215,26 +258,31 @@ async def main():
 ====================================================
   Query:              {query}
   Requested target:   {args.target:,}
-  Tweets scraped:     {run.posts_fetched:,}
-  New tweets saved:   {run.posts_inserted:,}
-  Duplicates:         {run.duplicates:,}
+  Tweets scraped:     {len(tweets):,}
+  New tweets in CSV:  {csv_writer.written_count:,}
+  CSV Duplicates:     {csv_writer.duplicates_skipped:,}
+  CSV Destination:    {csv_writer.filepath}
+{db_summary_line}
   Duration:           {hours:02d}:{minutes:02d}:{seconds:02d}
-  Status:             {run.status.upper()}
-  Method:             Playwright Browser Scraping
+  Status:             SUCCESS
+  Storage Mode:       Real-Time CSV {'+ PostgreSQL' if args.use_db else ''}
 ====================================================
 """
         print(summary_box)
 
     except Exception as e:
-        run.completed_at = datetime.now(timezone.utc)
-        run.status = "failed"
-        run.error_message = str(e)
-        run_repo.update_run(run)
+        if args.use_db and run and run_repo:
+            run.completed_at = datetime.now(timezone.utc)
+            run.status = "failed"
+            run.error_message = str(e)
+            run_repo.update_run(run)
         logger.error(f"Scraping failed: {e}")
         raise
     finally:
+        csv_writer.close()
         await scraper.close()
-        db.close()
+        if db:
+            db.close()
 
 
 if __name__ == "__main__":

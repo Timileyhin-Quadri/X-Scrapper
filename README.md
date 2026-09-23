@@ -357,20 +357,28 @@ python scripts/login.py
 
 ### Phase 2: Scrape Tweets Automatically
 
-Now that your session is saved in `session.json`, you can scrape tweets at any time without having to type your password again!
+Now that your session is saved in `session.json`, you can scrape tweets at any time!
 
-#### 1. Quick Test Run (Collect 50 Tweets):
+> 💡 **Default Zero-Setup Storage:** By default, tweets are saved directly to a **CSV spreadsheet in real-time** (`data/tweets.csv`). You do **not** need PostgreSQL running. Every tweet is flushed to disk immediately on each scroll so no data is ever lost.
+
+#### 1. Quick Test Run (Collect 50 Tweets to CSV):
 ```bash
 python scripts/scrape_tweets.py --target 50
 ```
 
-#### 2. Watch the Browser Scrape in Real-Time (`--visible`):
+#### 2. Save to a Custom CSV File:
+Use the `--output` (or `--csv-file`) option to name your spreadsheet:
+```bash
+python scripts/scrape_tweets.py --output data/south_africa_2022.csv --target 500
+```
+
+#### 3. Watch the Browser Scrape in Real-Time (`--visible`):
 If you want to watch the browser open and scroll through tweets live on your screen:
 ```bash
 python scripts/scrape_tweets.py --target 100 --visible
 ```
 
-#### 3. Scrape a Custom Topic or Hashtag:
+#### 4. Scrape a Custom Topic or Hashtag:
 Use the `--query` option to search for whatever you need:
 ```bash
 # Search for Artificial Intelligence tweets in English without retweets:
@@ -380,7 +388,13 @@ python scripts/scrape_tweets.py --query "#AI lang:en -is:retweet" --target 500
 python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst -is:retweet" --target 1000
 ```
 
-#### 4. Scraping Output Summary Box:
+#### 5. Optional: Persist to PostgreSQL Database (`--use-db`):
+If you have PostgreSQL configured and also want to save records into the relational database:
+```bash
+python scripts/scrape_tweets.py --query "#PutSouthAfricaFirst -is:retweet" --target 1000 --use-db
+```
+
+#### 6. Scraping Output Summary Box:
 When the collection finishes, the script prints a clean summary:
 ```text
 ====================================================
@@ -389,14 +403,16 @@ When the collection finishes, the script prints a clean summary:
   Query:              #PutSouthAfricaFirst -is:retweet
   Requested target:   1,000
   Tweets scraped:     1,000
-  New tweets saved:   984
-  Duplicates:         16
+  New tweets in CSV:  984
+  CSV Duplicates:     16
+  CSV Destination:    data/tweets.csv
+  Database:           Disabled (saved to CSV only)
   Duration:           00:04:12
   Status:             SUCCESS
-  Method:             Playwright Browser Scraping
+  Storage Mode:       Real-Time CSV
 ====================================================
 ```
-> 🛡️ **Zero Duplicates:** If you run the script multiple times, the tool automatically recognizes tweets that are already in your database and skips them, ensuring your dataset remains clean and valid.
+> 🛡️ **Zero Duplicates & Resumable:** If you re-run the script or restart after stopping, the tool automatically reads existing tweet IDs already saved in your CSV file and skips them, ensuring your dataset remains clean and valid.
 
 ---
 

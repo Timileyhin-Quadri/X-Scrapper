@@ -25,6 +25,9 @@ class Config:
     collection_interval: int = field(
         default_factory=lambda: int(os.getenv("COLLECTION_INTERVAL_SECONDS", "300"))
     )
+    csv_output_path: str = field(
+        default_factory=lambda: os.getenv("CSV_OUTPUT_PATH", "data/tweets.csv")
+    )
 
     # Playwright / Google Chromium CDP Configuration
     cdp_port: int = field(
@@ -45,10 +48,10 @@ class Config:
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
 
-    def validate(self) -> list[str]:
+    def validate(self, require_db: bool = True) -> list[str]:
         """Validate configuration. Returns list of errors."""
         errors = []
-        if not self.db_password:
+        if require_db and not self.db_password:
             errors.append("DB_PASSWORD is not set")
         if self.collection_interval < 10:
             errors.append("COLLECTION_INTERVAL_SECONDS must be >= 10")
