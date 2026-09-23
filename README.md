@@ -1,6 +1,6 @@
 # 🐦 X (Twitter) Research Data Collector
 
-A complete, beginner-friendly data collection and persistence pipeline designed for academic research and social data analysis. This project collects public posts (tweets) from **X (formerly Twitter)** matching any hashtag or search query (such as `#PutSouthAfricaFirst`), prevents duplicate records, securely saves the data into a database (**PostgreSQL** or **MySQL**), and allows you to export everything into an **Excel / CSV** spreadsheet with a single command.
+A complete, beginner-friendly data collection and persistence pipeline designed for academic research and social data analysis. This project collects public posts (tweets) from **X (formerly Twitter)** matching any hashtag or search query (such as `#PutSouthAfricaFirst`), prevents duplicate records, streams data directly into a **CSV spreadsheet in real-time** (`data/tweets.csv` with zero database setup needed), and optionally supports persisting into a relational database (**PostgreSQL** or **MySQL**) via `--use-db`.
 
 ---
 
@@ -12,19 +12,14 @@ A complete, beginner-friendly data collection and persistence pipeline designed 
   - [Step 1: Open Terminal / Command Prompt](#step-1-open-terminal--command-prompt)
   - [Step 2: Create a Virtual Environment](#step-2-create-a-virtual-environment)
   - [Step 3: Install Required Dependencies](#step-3-install-required-dependencies)
-- [Database Setup Guide](#-database-setup-guide)
-  - [Option A: PostgreSQL Setup (Recommended & Native)](#option-a-postgresql-setup-recommended--native)
-    - [Method 1: Using Docker (Fastest - 1 Command)](#method-1-using-docker-fastest---1-command)
-    - [Method 2: Using pgAdmin 4 (Graphical Interface)](#method-2-using-pgadmin-4-graphical-interface)
-  - [Option B: MySQL Setup (Detailed Walkthrough)](#option-b-mysql-setup-detailed-walkthrough)
-    - [Method 1: Using phpMyAdmin / XAMPP (Graphical Interface)](#method-1-using-phpmyadmin--xampp-graphical-interface)
-    - [Method 2: Using MySQL Workbench (Graphical Interface)](#method-2-using-mysql-workbench-graphical-interface)
-    - [Method 3: Using Docker for MySQL](#method-3-using-docker-for-mysql)
 - [Configuration (.env File Explained)](#-configuration-env-file-explained)
 - [How to Run the Project](#-how-to-run-the-project)
   - [Phase 1: Log in Once & Save Session Cookies](#phase-1-log-in-once--save-session-cookies)
-  - [Phase 2: Scrape Tweets Automatically](#phase-2-scrape-tweets-automatically)
-  - [Phase 3: Export Data to Excel / CSV](#phase-3-export-data-to-excel--csv)
+  - [Phase 2: Scrape Tweets Automatically (CSV Default)](#phase-2-scrape-tweets-automatically)
+  - [Phase 3: Optional Database Export & SQL Storage](#phase-3-export-data-to-excel--csv)
+- [Database Setup Guide (Optional)](#-database-setup-guide)
+  - [Option A: PostgreSQL Setup](#option-a-postgresql-setup-recommended--native)
+  - [Option B: MySQL Setup](#option-b-mysql-setup-detailed-walkthrough)
 - [Systematic Historical Scraping Campaigns (2020 – 2026)](#-systematic-historical-scraping-campaigns-2020--2026)
   - [Search Operator Essentials (-is:retweet, Quotes, Visibility)](#-search-operator-essentials)
   - [Maximum Volume Extraction Strategy (--scroll-pause & Target)](#-maximum-volume-extraction-strategy)
@@ -51,32 +46,32 @@ graph TD
     A[User Account on X] -->|scripts/login.py| B[Google Chrome / Chromium]
     B -->|Save Cookies| C[session.json]
     C -->|Auto-Load Session| D[Playwright Scraper Engine]
-    D -->|Scrapes Live Tweets| E[app/repository.py]
-    E -->|Checks for Duplicates| F[(Database: PostgreSQL or MySQL)]
-    F -->|scripts/export_csv.py| G[data/tweets.csv - Open in Excel]
+    D -->|Real-Time Streaming & Deduplication| E[app/csv_writer.py]
+    E -->|Flushed to Disk Live| F[data/tweets.csv - Ready for Excel/Pandas]
+    D -.->|Optional with --use-db| G[(PostgreSQL / MySQL Database)]
 ```
 
 ### Key Components Built in the Codebase:
 1. **Interactive Login Helper (`scripts/login.py`)**: Opens a real Chrome browser window. You log into your X account normally, solve any two-factor (2FA) or email codes, and the script extracts your authenticated cookies into `session.json`. You only need to do this once!
 2. **Stealth Playwright Scraper (`app/playwright_scraper.py`)**: Connects to Google Chrome via the Chrome DevTools Protocol (CDP on port `922`). It injects stealth scripts to bypass bot-detection, automatically navigates search pages, scrolls continuously, extracts tweet contents, timestamps, author usernames, IDs, and metrics (likes, retweets, replies, quotes).
-3. **Automated Scraper CLI (`scripts/scrape_tweets.py`)**: The main command-line runner. It loads your saved session cookies, collects up to your target number of tweets (e.g., 500, 5,000, 10,000), checks the database, ignores duplicates, and tracks statistics for academic reproducibility.
-4. **Persistence Layer (`app/database.py` & `app/repository.py`)**: Handles database connection pooling, auto-executes the schema on startup, and uses idempotent SQL inserts (`ON CONFLICT (tweet_id) DO NOTHING` for PostgreSQL) so that duplicate posts are never created.
-5. **CSV Exporter (`scripts/export_csv.py`)**: Reads the collected tweets from the database and exports them into a clean CSV file encoded with UTF-8 BOM, meaning it opens perfectly in Microsoft Excel, Apple Numbers, or Google Sheets without broken characters.
+3. **Real-Time CSV Writer (`app/csv_writer.py`)**: Streams collected tweets directly to `data/tweets.csv` on every scroll with instant disk flushing (`f.flush()`). Pre-loads existing tweet IDs on startup to guarantee automatic deduplication and resumability across restarts.
+4. **Automated Scraper CLI (`scripts/scrape_tweets.py`)**: The main command-line runner. Collects up to your target number of tweets (e.g., 500, 5,000, 10,000), streams to CSV by default, and optionally persists to a database when `--use-db` is specified.
+5. **Persistence Layer (`app/database.py` & `app/repository.py`)**: Handles optional database connection pooling, auto-executes the schema on startup, and uses idempotent SQL inserts (`ON CONFLICT (tweet_id) DO NOTHING` for PostgreSQL) when `--use-db` is passed.
 
 ---
 
 ## 💻 System Requirements
 
-You do **not** need to be a programmer to run this project. You only need the following three things installed on your computer:
+You do **not** need to be a programmer to run this project. You only need:
 
 1. **Python (version 3.10, 3.11, or newer)**:
    - Download from [python.org/downloads](https://www.python.org/downloads/).
    - ⚠️ **CRITICAL FOR WINDOWS USERS:** When the Python installer opens, you **MUST check the box** that says **"Add Python to PATH"** before clicking Install.
 2. **Google Chrome**:
    - The scraper runs with your installed Google Chrome browser. Make sure standard Chrome is installed.
-3. **A Database Engine (Choose ONE)**:
-   - **PostgreSQL** (Recommended - natively integrated) **OR**
-   - **MySQL** (Detailed setup instructions provided below).
+3. **A Database Engine (OPTIONAL)**:
+   - **None needed for default scraping!** Tweets are saved directly to `data/tweets.csv` in real-time.
+   - **PostgreSQL / MySQL:** Only needed if you explicitly wish to use relational database queries and pass `--use-db`.
 
 ---
 
